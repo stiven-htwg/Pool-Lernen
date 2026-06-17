@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pool + Lernen</title>
+
+<!-- Supabase JS Client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b3a 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+  #app { max-width: 900px; margin: 0 auto; padding: 16px; }
+  .auth-wrap { min-height: 90vh; display: flex; align-items: center; justify-content: center; }
+  .auth-card {
+    background: rgba(30,41,59,0.7); backdrop-filter: blur(12px);
+    border: 1px solid rgba(148,163,184,0.15); border-radius: 20px;
+    padding: 36px; width: 100%; max-width: 380px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .auth-card h1 {
+    font-size: 24px; margin-bottom: 6px;
+    background: linear-gradient(90deg,#818cf8,#c084fc);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .auth-card p.sub { color: #94a3b8; font-size: 13px; margin-bottom: 22px; }
+  .auth-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .auth-tab {
+    flex: 1; text-align: center; padding: 8px; border-radius: 10px; cursor: pointer;
+    background: rgba(255,255,255,0.05); font-size: 14px; color: #94a3b8; transition: 0.2s;
+  }
+  .auth-tab.active { background: linear-gradient(90deg,#6366f1,#8b5cf6); color: white; }
+  input, select, textarea {
+    width: 100%; padding: 11px 14px; margin-bottom: 12px;
+    background: rgba(15,23,42,0.6); border: 1px solid rgba(148,163,184,0.2);
+    border-radius: 10px; color: #e2e8f0; font-size: 14px; outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: #818cf8; }
+  textarea { resize: vertical; min-height: 70px; font-family: inherit; }
+  button {
+    cursor: pointer; border: none; border-radius: 10px; font-size: 14px;
+    padding: 11px 18px; transition: 0.15s; font-weight: 500;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(90deg,#6366f1,#8b5cf6); color: white; width: 100%; }
+  .btn-primary:hover { box-shadow: 0 4px 16px rgba(139,92,246,0.4); }
+  .btn-sm { padding: 7px 12px; font-size: 13px; background: rgba(255,255,255,0.08); color: #e2e8f0; }
+  .btn-sm:hover { background: rgba(255,255,255,0.15); }
+  .btn-accent { background: linear-gradient(90deg,#22c55e,#16a34a); color: white; }
+  .error-msg { color: #f87171; font-size: 13px; margin-bottom: 10px; min-height: 14px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 4px; margin-bottom: 16px; }
+  .topbar h2 { font-size: 18px; }
+  .topbar .me { font-size: 13px; color: #94a3b8; }
+  .tabs {
+    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 18px;
+    border-bottom: 1px solid rgba(148,163,184,0.12);
+  }
+  .tab { padding: 9px 16px; border-radius: 10px 10px 0 0; cursor: pointer; color: #94a3b8; font-size: 14px; white-space: nowrap; transition: 0.2s; }
+  .tab.active { color: white; background: rgba(139,92,246,0.18); border-bottom: 2px solid #8b5cf6; }
+  .tab:hover { color: #e2e8f0; }
+  .card { background: rgba(30,41,59,0.6); border: 1px solid rgba(148,163,184,0.12); border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+  .card.thread { border-color: rgba(139,92,246,0.5); background: rgba(139,92,246,0.08); }
+  .card h3 { font-size: 16px; margin-bottom: 6px; }
+  .card .meta { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+  .card p.body { font-size: 14px; line-height: 1.5; color: #cbd5e1; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: linear-gradient(90deg,#6366f1,#8b5cf6); color: white; margin-left: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .section-title { font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin: 18px 0 8px; }
+  .empty { color: #64748b; font-size: 14px; padding: 20px; text-align: center; }
+  .loading { text-align: center; padding: 40px; color: #94a3b8; }
+  .forum-layout { display: flex; gap: 16px; }
+  .room-list { width: 180px; flex-shrink: 0; }
+  .room-item { padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 14px; margin-bottom: 6px; color: #94a3b8; transition: 0.15s; }
+  .room-item.active { background: rgba(139,92,246,0.2); color: white; }
+  .room-item:hover { background: rgba(255,255,255,0.05); }
+  .forum-main { flex: 1; min-width: 0; }
+  .msg-list { max-height: 380px; overflow-y: auto; margin-bottom: 12px; }
+  .msg { background: rgba(15,23,42,0.5); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .msg .who { font-size: 12px; color: #a78bfa; font-weight: 600; }
+  .msg .when { font-size: 11px; color: #64748b; margin-left: 6px; }
+  .msg .text { font-size: 14px; margin-top: 4px; color: #e2e8f0; }
+  .interest-list { font-size: 13px; color: #94a3b8; margin: 8px 0; }
+  .winner { color: #4ade80; font-weight: 600; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// =========================================================
+// HIER DEINE SUPABASE-DATEN EINTRAGEN (Settings -> API im Supabase-Dashboard)
+// =========================================================
+const SUPABASE_URL = 'https://djbyqunkmvhphbgfrktk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_nOhWqOJCjih1MC4FseHzkQ_K48hPy_x';
+// =========================================================
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const FAKE_EMAIL_DOMAIN = 'lerncommunity.local';
+
+let currentUser = null;
+let activeTab = 'home';
+let authMode = 'login';
+let activeRoom = null;
+let authError = '';
+let cache = { feed: [], materials: [], rooms: [], messages: {}, events: [], raffles: [] };
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = (s === undefined || s === null) ? '' : String(s);
+  return d.innerHTML;
+}
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' +
+         d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+function fakeEmail(username) { return username.toLowerCase().replace(/[^a-z0-9_]/g, '') + '@' + FAKE_EMAIL_DOMAIN; }
+function translateError(msg) {
+  if (!msg) return 'Unbekannter Fehler.';
+  if (msg.includes('duplicate') || msg.includes('already registered')) return 'Dieser Benutzername ist schon vergeben.';
+  if (msg.includes('Invalid login')) return 'Benutzername oder Passwort falsch.';
+  if (msg.includes('Password should be')) return 'Passwort muss mind. 6 Zeichen haben.';
+  return msg;
+}
+
+// ---------- Auth ----------
+function renderAuth() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <h1>📚 Pool + Lernen</h1>
+        <p class="sub">Für uns und unsere Kommilitonen</p>
+        <div class="auth-tabs">
+          <div class="auth-tab ${authMode==='login'?'active':''}" onclick="setAuthMode('login')">Einloggen</div>
+          <div class="auth-tab ${authMode==='register'?'active':''}" onclick="setAuthMode('register')">Registrieren</div>
+        </div>
+        <div class="error-msg">${esc(authError)}</div>
+        <input id="auth-user" placeholder="Benutzername" autocomplete="username" />
+        <input id="auth-pw" type="password" placeholder="Passwort (mind. 6 Zeichen)" autocomplete="current-password" />
+        <button class="btn-primary" id="auth-btn" onclick="${authMode==='login' ? 'doLogin()' : 'doRegister()'}">
+          ${authMode==='login' ? 'Einloggen' : 'Account erstellen'}
+        </button>
+      </div>
+    </div>
+  `;
+  document.getElementById('auth-pw').addEventListener('keydown', e => {
+    if (e.key === 'Enter') authMode === 'login' ? doLogin() : doRegister();
+  });
+}
+function setAuthMode(m) { authMode = m; authError = ''; renderAuth(); }
+
+async function doRegister() {
+  const u = document.getElementById('auth-user').value.trim();
+  const p = document.getElementById('auth-pw').value;
+  if (!u || !p) { authError = 'Bitte Benutzername und Passwort eingeben.'; renderAuth(); return; }
+  const btn = document.getElementById('auth-btn'); btn.disabled = true; btn.textContent = 'Lädt...';
+  const { data, error } = await sb.auth.signUp({
+    email: fakeEmail(u), password: p, options: { data: { username: u } }
+  });
+  if (error) { authError = translateError(error.message); renderAuth(); return; }
+  currentUser = u;
+  renderApp();
+}
+async function doLogin() {
+  const u = document.getElementById('auth-user').value.trim();
+  const p = document.getElementById('auth-pw').value;
+  if (!u || !p) { authError = 'Bitte Benutzername und Passwort eingeben.'; renderAuth(); return; }
+  const btn = document.getElementById('auth-btn'); btn.disabled = true; btn.textContent = 'Lädt...';
+  const { data, error } = await sb.auth.signInWithPassword({ email: fakeEmail(u), password: p });
+  if (error) { authError = translateError(error.message); renderAuth(); return; }
+  currentUser = u;
+  renderApp();
+}
+async function doLogout() { await sb.auth.signOut(); currentUser = null; authError = ''; renderAuth(); }
+
+// ---------- App Shell ----------
+function renderApp() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="topbar">
+      <h2>📚 Pool + Lernen</h2>
+      <div class="row">
+        <span class="me">Eingeloggt als <strong>${esc(currentUser)}</strong></span>
+        <button class="btn-sm" onclick="doLogout()">Logout</button>
+      </div>
+    </div>
+    <div class="tabs">
+      ${tabBtn('home','🏠 Start')}
+      ${tabBtn('materials','📂 Material')}
+      ${tabBtn('forum','💬 Forum')}
+      ${tabBtn('events','📅 Veranstaltungen')}
+      ${tabBtn('raffles','🎟️ Tickets')}
+    </div>
+    <div id="tab-content"><div class="loading">Lädt...</div></div>
+  `;
+  loadTab(activeTab);
+}
+function tabBtn(id, label) { return `<div class="tab ${activeTab===id?'active':''}" onclick="switchTab('${id}')">${label}</div>`; }
+function switchTab(id) { activeTab = id; renderApp(); }
+
+async function loadTab(tab) {
+  if (tab === 'home') { await loadFeed(); renderHome(); }
+  else if (tab === 'materials') { await loadMaterials(); renderMaterials(); }
+  else if (tab === 'forum') { await loadRooms(); if (!activeRoom) activeRoom = cache.rooms[0]?.name; await loadMessages(); renderForum(); }
+  else if (tab === 'events') { await loadEvents(); renderEvents(); }
+  else if (tab === 'raffles') { await loadRaffles(); renderRaffles(); }
+}
+function refreshTab(tab) { loadTab(tab); }
+
+// ---------- HOME / NEWS ----------
+async function loadFeed() {
+  const { data } = await sb.from('posts').select('*').order('created_at', { ascending: false });
+  cache.feed = data || [];
+}
+function renderHome() {
+  const c = document.getElementById('tab-content');
+  const threads = cache.feed.filter(p => p.is_thread);
+  const rest = cache.feed.filter(p => !p.is_thread);
+  c.innerHTML = `
+    <div class="card">
+      <h3>Neuer Beitrag</h3>
+      <input id="post-title" placeholder="Titel" />
+      <textarea id="post-content" placeholder="Was gibt's Neues?"></textarea>
+      <label class="row" style="font-size:13px;color:#94a3b8;margin-bottom:10px;">
+        <input type="checkbox" id="post-thread" style="width:auto;margin:0;" /> Als wichtige News markieren
+      </label>
+      <button class="btn-primary" onclick="addPost()">Posten</button>
+    </div>
+    <div class="row" style="justify-content:space-between;">
+      <div class="section-title">News & Threads</div>
+      <button class="btn-sm" onclick="refreshTab('home')">🔄 Aktualisieren</button>
+    </div>
+    ${threads.length ? threads.map(postCard).join('') : '<div class="empty">Noch keine News.</div>'}
+    <div class="section-title">Alle Beiträge</div>
+    ${rest.length ? rest.map(postCard).join('') : '<div class="empty">Noch keine weiteren Beiträge.</div>'}
+  `;
+}
+function postCard(p) {
+  return `
+    <div class="card ${p.is_thread?'thread':''}">
+      <h3>${esc(p.title)} ${p.is_thread?'<span class="badge">News</span>':''}</h3>
+      <div class="meta">${esc(p.author)} · ${fmtTime(p.created_at)} · 👍 ${p.upvotes||0}</div>
+      <p class="body">${esc(p.content)}</p>
+      <div style="margin-top:8px;"><button class="btn-sm" onclick="upvotePost('${p.id}')">👍 Hochstufen</button></div>
+    </div>
+  `;
+}
+async function addPost() {
+  const title = document.getElementById('post-title').value.trim();
+  const content = document.getElementById('post-content').value.trim();
+  const is_thread = document.getElementById('post-thread').checked;
+  if (!title || !content) return;
+  await sb.from('posts').insert({ title, content, is_thread, author: currentUser });
+  await loadFeed(); renderHome();
+}
+async function upvotePost(id) {
+  const p = cache.feed.find(x => x.id === id);
+  if (!p) return;
+  await sb.from('posts').update({ upvotes: (p.upvotes||0) + 1 }).eq('id', id);
+  await loadFeed(); renderHome();
+}
+
+// ---------- MATERIALS ----------
+async function loadMaterials() {
+  const { data } = await sb.from('materials').select('*').order('created_at', { ascending: false });
+  cache.materials = data || [];
+}
+function renderMaterials() {
+  const c = document.getElementById('tab-content');
+  c.innerHTML = `
+    <div class="card">
+      <h3>Neues Material teilen</h3>
+      <input id="mat-title" placeholder="Titel (z.B. 'SWEN2 Übung 3')" />
+      <input id="mat-subject" placeholder="Fach / Kurs" />
+      <input id="mat-link" placeholder="Link (Drive/Dropbox) — optional" />
+      <textarea id="mat-note" placeholder="Notiz / Beschreibung — optional"></textarea>
+      <button class="btn-primary" onclick="addMaterial()">Hinzufügen</button>
+    </div>
+    <div class="row" style="justify-content:space-between;">
+      <div class="section-title">Geteilte Unterlagen</div>
+      <button class="btn-sm" onclick="refreshTab('materials')">🔄 Aktualisieren</button>
+    </div>
+    ${cache.materials.length ? cache.materials.map(m => `
+      <div class="card">
+        <h3>${esc(m.title)} <span class="badge">${esc(m.subject||'Allgemein')}</span></h3>
+        <div class="meta">${esc(m.author)} · ${fmtTime(m.created_at)}</div>
+        ${m.link ? `<p class="body">🔗 <a href="${esc(m.link)}" target="_blank" style="color:#a78bfa;">${esc(m.link)}</a></p>` : ''}
+        ${m.note ? `<p class="body">${esc(m.note)}</p>` : ''}
+      </div>
+    `).join('') : '<div class="empty">Noch keine Unterlagen geteilt.</div>'}
+  `;
+}
+async function addMaterial() {
+  const title = document.getElementById('mat-title').value.trim();
+  const subject = document.getElementById('mat-subject').value.trim();
+  const link = document.getElementById('mat-link').value.trim();
+  const note = document.getElementById('mat-note').value.trim();
+  if (!title) return;
+  await sb.from('materials').insert({ title, subject, link, note, author: currentUser });
+  await loadMaterials(); renderMaterials();
+}
+
+// ---------- FORUM ----------
+async function loadRooms() {
+  const { data } = await sb.from('forum_rooms').select('*').order('name', { ascending: true });
+  cache.rooms = data || [];
+}
+async function loadMessages() {
+  if (!activeRoom) { cache.messages[activeRoom] = []; return; }
+  const { data } = await sb.from('forum_messages').select('*').eq('room_name', activeRoom).order('created_at', { ascending: true });
+  cache.messages[activeRoom] = data || [];
+}
+function renderForum() {
+  const c = document.getElementById('tab-content');
+  const msgs = cache.messages[activeRoom] || [];
+  c.innerHTML = `
+    <div class="row" style="justify-content:flex-end;margin-bottom:8px;">
+      <button class="btn-sm" onclick="refreshTab('forum')">🔄 Aktualisieren</button>
+    </div>
+    <div class="forum-layout">
+      <div class="room-list">
+        ${cache.rooms.map(r => `<div class="room-item ${r.name===activeRoom?'active':''}" onclick="selectRoom('${esc(r.name)}')">${esc(r.name)}</div>`).join('')}
+        <input id="new-room" placeholder="Neuer Raum..." style="margin-top:10px;" />
+        <button class="btn-sm" style="width:100%;" onclick="addRoom()">+ Raum erstellen</button>
+      </div>
+      <div class="forum-main">
+        <div class="card" style="margin-bottom:10px;">
+          <h3 style="margin-bottom:10px;">${esc(activeRoom||'')}</h3>
+          <div class="msg-list">
+            ${msgs.length ? msgs.map(m => `
+              <div class="msg">
+                <span class="who">${esc(m.author)}</span><span class="when">${fmtTime(m.created_at)}</span>
+                <div class="text">${esc(m.text)}</div>
+              </div>
+            `).join('') : '<div class="empty">Noch keine Nachrichten in diesem Raum.</div>'}
+          </div>
+          <div class="row">
+            <input id="msg-input" placeholder="Nachricht schreiben..." style="flex:1;margin-bottom:0;" />
+            <button class="btn-primary" style="width:auto;" onclick="sendMsg()">Senden</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('msg-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMsg(); });
+}
+async function selectRoom(r) { activeRoom = r; await loadMessages(); renderForum(); }
+async function addRoom() {
+  const name = document.getElementById('new-room').value.trim();
+  if (!name) return;
+  await sb.from('forum_rooms').insert({ name });
+  activeRoom = name;
+  await loadRooms(); await loadMessages(); renderForum();
+}
+async function sendMsg() {
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text || !activeRoom) return;
+  await sb.from('forum_messages').insert({ room_name: activeRoom, author: currentUser, text });
+  await loadMessages(); renderForum();
+}
+
+// ---------- EVENTS ----------
+async function loadEvents() {
+  const { data } = await sb.from('events').select('*').order('date', { ascending: true });
+  cache.events = data || [];
+}
+function renderEvents() {
+  const c = document.getElementById('tab-content');
+  c.innerHTML = `
+    <div class="card">
+      <h3>Neue Veranstaltung</h3>
+      <input id="ev-title" placeholder="Titel" />
+      <input id="ev-date" type="date" />
+      <input id="ev-location" placeholder="Ort" />
+      <textarea id="ev-desc" placeholder="Beschreibung — optional"></textarea>
+      <button class="btn-primary" onclick="addEvent()">Hinzufügen</button>
+    </div>
+    <div class="row" style="justify-content:space-between;">
+      <div class="section-title">Anstehende Veranstaltungen</div>
+      <button class="btn-sm" onclick="refreshTab('events')">🔄 Aktualisieren</button>
+    </div>
+    ${cache.events.length ? cache.events.map(ev => `
+      <div class="card">
+        <h3>${esc(ev.title)}</h3>
+        <div class="meta">📅 ${esc(ev.date)} ${ev.location ? '· 📍 '+esc(ev.location) : ''} · von ${esc(ev.author)}</div>
+        ${ev.description ? `<p class="body">${esc(ev.description)}</p>` : ''}
+      </div>
+    `).join('') : '<div class="empty">Noch keine Veranstaltungen.</div>'}
+  `;
+}
+async function addEvent() {
+  const title = document.getElementById('ev-title').value.trim();
+  const date = document.getElementById('ev-date').value;
+  const location = document.getElementById('ev-location').value.trim();
+  const description = document.getElementById('ev-desc').value.trim();
+  if (!title || !date) return;
+  await sb.from('events').insert({ title, date, location, description, author: currentUser });
+  await loadEvents(); renderEvents();
+}
+
+// ---------- RAFFLES ----------
+async function loadRaffles() {
+  const { data } = await sb.from('raffles').select('*, raffle_interest(*)').order('created_at', { ascending: false });
+  cache.raffles = data || [];
+}
+function renderRaffles() {
+  const c = document.getElementById('tab-content');
+  c.innerHTML = `
+    <div class="card">
+      <h3>Neue Ticket-Verlosung</h3>
+      <input id="raf-title" placeholder="Für welche Veranstaltung?" />
+      <input id="raf-count" type="number" min="1" placeholder="Wie viele Tickets?" />
+      <button class="btn-primary" onclick="addRaffle()">Verlosung erstellen</button>
+    </div>
+    <div class="row" style="justify-content:space-between;">
+      <div class="section-title">Laufende & vergangene Verlosungen</div>
+      <button class="btn-sm" onclick="refreshTab('raffles')">🔄 Aktualisieren</button>
+    </div>
+    ${cache.raffles.length ? cache.raffles.map(raffleCard).join('') : '<div class="empty">Noch keine Verlosungen.</div>'}
+  `;
+}
+function raffleCard(r) {
+  const interested = r.raffle_interest || [];
+  const myEntry = interested.find(i => i.username === currentUser);
+  const totalWanted = interested.reduce((s,i)=>s+i.count,0);
+  return `
+    <div class="card">
+      <h3>🎟️ ${esc(r.title)}</h3>
+      <div class="meta">${r.ticket_count} Tickets · erstellt von ${esc(r.owner)} · ${fmtTime(r.created_at)}</div>
+      <div class="interest-list">${interested.length} Interessent(en), insgesamt ${totalWanted} gewünschte Tickets</div>
+      ${r.drawn ? `
+        <p class="body"><strong>Ergebnis der Verlosung:</strong></p>
+        ${(r.winners||[]).length ? r.winners.map(w => `<div class="winner">🎉 ${esc(w.user)} → ${w.count} Ticket(s)</div>`).join('') : '<div class="empty">Niemand hat Tickets erhalten.</div>'}
+      ` : `
+        <div class="row">
+          ${!myEntry ? `
+            <input id="want-${r.id}" type="number" min="1" max="${r.ticket_count}" placeholder="Anzahl" style="width:90px;margin-bottom:0;" />
+            <button class="btn-sm" onclick="joinRaffle('${r.id}')">Interesse anmelden</button>
+          ` : `<span style="font-size:13px;color:#a78bfa;">Du willst ${myEntry.count} Ticket(s) — angemeldet ✓</span>`}
+          ${interested.length ? `<button class="btn-accent" onclick="drawRaffle('${r.id}')">🎲 Jetzt auslosen</button>` : ''}
+        </div>
+      `}
+    </div>
+  `;
+}
+async function addRaffle() {
+  const title = document.getElementById('raf-title').value.trim();
+  const ticket_count = parseInt(document.getElementById('raf-count').value);
+  if (!title || !ticket_count || ticket_count < 1) return;
+  await sb.from('raffles').insert({ title, ticket_count, owner: currentUser });
+  await loadRaffles(); renderRaffles();
+}
+async function joinRaffle(id) {
+  const input = document.getElementById('want-' + id);
+  const count = parseInt(input.value);
+  if (!count || count < 1) return;
+  await sb.from('raffle_interest').upsert(
+    { raffle_id: id, username: currentUser, count },
+    { onConflict: 'raffle_id,username' }
+  );
+  await loadRaffles(); renderRaffles();
+}
+async function drawRaffle(id) {
+  const r = cache.raffles.find(x => x.id === id);
+  if (!r || r.drawn) return;
+  const interested = r.raffle_interest || [];
+  const shuffled = interested.slice().sort(() => Math.random() - 0.5);
+  let remaining = r.ticket_count;
+  const winners = [];
+  for (const entry of shuffled) {
+    if (remaining <= 0) break;
+    const given = Math.min(entry.count, remaining);
+    if (given > 0) { winners.push({ user: entry.username, count: given }); remaining -= given; }
+  }
+  await sb.from('raffles').update({ drawn: true, winners }).eq('id', id);
+  await loadRaffles(); renderRaffles();
+}
+
+// ---------- Init: Session wiederherstellen ----------
+(async function init() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) {
+    currentUser = data.session.user.user_metadata?.username || data.session.user.email.split('@')[0];
+    renderApp();
+  } else {
+    renderAuth();
+  }
+})();
+</script>
+</body>
+</html>
