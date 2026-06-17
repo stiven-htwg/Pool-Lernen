@@ -69,9 +69,10 @@
   .card { background: rgba(30,41,59,0.6); border: 1px solid rgba(148,163,184,0.12); border-radius: 16px; padding: 18px; margin-bottom: 14px; }
   .card.thread { border-color: rgba(139,92,246,0.5); background: rgba(139,92,246,0.08); }
   .card h3 { font-size: 16px; margin-bottom: 6px; }
-  .card .meta { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+  .card .meta { font-size: 12px; color: #94a3b8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
   .card p.body { font-size: 14px; line-height: 1.5; color: #cbd5e1; }
-  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: linear-gradient(90deg,#6366f1,#8b5cf6); color: white; margin-left: 6px; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: linear-gradient(90deg,#6366f1,#8b5cf6); color: white; margin-left: 6px; margin-bottom:4px; }
+  .badge.me { background: linear-gradient(90deg,#22c55e,#16a34a); }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .section-title { font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin: 18px 0 8px; }
   .empty { color: #64748b; font-size: 14px; padding: 20px; text-align: center; }
@@ -84,11 +85,22 @@
   .forum-main { flex: 1; min-width: 0; }
   .msg-list { max-height: 380px; overflow-y: auto; margin-bottom: 12px; }
   .msg { background: rgba(15,23,42,0.5); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .msg .who-row { display: flex; align-items: center; gap: 6px; }
   .msg .who { font-size: 12px; color: #a78bfa; font-weight: 600; }
   .msg .when { font-size: 11px; color: #64748b; margin-left: 6px; }
   .msg .text { font-size: 14px; margin-top: 4px; color: #e2e8f0; }
   .interest-list { font-size: 13px; color: #94a3b8; margin: 8px 0; }
   .winner { color: #4ade80; font-weight: 600; }
+  .like-x { cursor: pointer; margin-left: 4px; opacity: 0.8; }
+  .like-x:hover { opacity: 1; }
+  .avatar-clickable { cursor: pointer; transition: 0.15s; }
+  .avatar-clickable:hover { opacity: 0.8; transform: scale(1.05); }
+  #draw-overlay { position: fixed; inset: 0; background: rgba(5,8,20,0.92); display: flex; align-items: center; justify-content: center; z-index: 1000; flex-direction: column; gap: 18px; padding: 20px; }
+  #wheel-wrap { position: relative; width: 260px; height: 260px; }
+  #wheel { width: 260px; height: 260px; border-radius: 50%; border: 6px solid #1e1b3a; box-shadow: 0 0 40px rgba(139,92,246,0.4); }
+  #wheel-pointer { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-top: 20px solid #f59e0b; }
+  #wheel-legend { display: flex; flex-wrap: wrap; gap: 8px; max-width: 340px; justify-content: center; }
+  #draw-result { color: white; font-size: 18px; font-weight: 600; min-height: 50px; text-align: center; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 4px; }
 </style>
@@ -98,7 +110,7 @@
 
 <script>
 // =========================================================
-// HIER DEINE SUPABASE-DATEN EINTRAGEN (Settings -> API im Supabase-Dashboard)
+// SUPABASE-VERBINDUNG
 // =========================================================
 const SUPABASE_URL = 'https://djbyqunkmvhphbgfrktk.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_nOhWqOJCjih1MC4FseHzkQ_K48hPy_x';
@@ -106,13 +118,15 @@ const SUPABASE_ANON_KEY = 'sb_publishable_nOhWqOJCjih1MC4FseHzkQ_K48hPy_x';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const FAKE_EMAIL_DOMAIN = 'lerncommunity.local';
+const PALETTE_COLORS = ['#8b5cf6','#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#84cc16'];
 
 let currentUser = null;
 let activeTab = 'home';
 let authMode = 'login';
 let activeRoom = null;
 let authError = '';
-let cache = { feed: [], materials: [], rooms: [], messages: {}, events: [], raffles: [] };
+let cache = { feed: [], likes: {}, materials: [], rooms: [], messages: {}, events: [], raffles: [], profileAvatars: {} };
+let drawState = null;
 
 function esc(s) {
   const d = document.createElement('div');
@@ -131,6 +145,38 @@ function translateError(msg) {
   if (msg.includes('Invalid login')) return 'Benutzername oder Passwort falsch.';
   if (msg.includes('Password should be')) return 'Passwort muss mind. 6 Zeichen haben.';
   return msg;
+}
+function colorFromName(name) {
+  let hash = 0;
+  const s = name || '?';
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return PALETTE_COLORS[hash % PALETTE_COLORS.length];
+}
+function avatarHTML(username, size) {
+  size = size || 28;
+  const url = cache.profileAvatars[username];
+  if (url) {
+    return `<img src="${esc(url)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`;
+  }
+  const color = colorFromName(username);
+  const initial = (username || '?').charAt(0).toUpperCase();
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};color:white;display:flex;align-items:center;justify-content:center;font-size:${Math.floor(size*0.45)}px;font-weight:600;flex-shrink:0;">${esc(initial)}</div>`;
+}
+async function loadProfiles() {
+  const { data } = await sb.from('profiles').select('username, avatar_url');
+  cache.profileAvatars = {};
+  (data || []).forEach(p => { if (p.avatar_url) cache.profileAvatars[p.username] = p.avatar_url; });
+}
+async function uploadAvatar(file) {
+  if (!file) return;
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = currentUser.toLowerCase().replace(/[^a-z0-9_]/g, '_') + '.' + ext;
+  const { error: upErr } = await sb.storage.from('avatars').upload(path, file, { upsert: true });
+  if (upErr) { alert('Avatar-Upload fehlgeschlagen: ' + upErr.message); return; }
+  const { data: pub } = sb.storage.from('avatars').getPublicUrl(path);
+  const { data: userData } = await sb.auth.getUser();
+  await sb.from('profiles').update({ avatar_url: pub.publicUrl + '?t=' + Date.now() }).eq('id', userData.user.id);
+  await renderApp();
 }
 
 // ---------- Auth ----------
@@ -185,12 +231,15 @@ async function doLogin() {
 async function doLogout() { await sb.auth.signOut(); currentUser = null; authError = ''; renderAuth(); }
 
 // ---------- App Shell ----------
-function renderApp() {
+async function renderApp() {
+  await loadProfiles();
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="topbar">
       <h2>📚 Pool + Lernen</h2>
       <div class="row">
+        <div class="avatar-clickable" title="Profilbild ändern" onclick="document.getElementById('avatar-file').click()">${avatarHTML(currentUser, 32)}</div>
+        <input type="file" id="avatar-file" accept="image/*" style="display:none" onchange="uploadAvatar(this.files[0])" />
         <span class="me">Eingeloggt als <strong>${esc(currentUser)}</strong></span>
         <button class="btn-sm" onclick="doLogout()">Logout</button>
       </div>
@@ -218,10 +267,27 @@ async function loadTab(tab) {
 }
 function refreshTab(tab) { loadTab(tab); }
 
-// ---------- HOME / NEWS ----------
+// ---------- HOME / NEWS / LIKES ----------
 async function loadFeed() {
   const { data } = await sb.from('posts').select('*').order('created_at', { ascending: false });
   cache.feed = data || [];
+  const { data: likeData } = await sb.from('post_likes').select('*');
+  const likes = {};
+  (likeData || []).forEach(l => { (likes[l.post_id] = likes[l.post_id] || []).push(l.username); });
+  cache.likes = likes;
+}
+function renderLikeLeaderboard() {
+  const counts = {};
+  Object.values(cache.likes).forEach(arr => arr.forEach(u => { counts[u] = (counts[u]||0) + 1; }));
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+  if (!sorted.length) return '';
+  return `
+    <div class="card">
+      <h3>💜 Like-Rangliste</h3>
+      <div class="meta" style="margin-bottom:10px;">Wer hat am meisten Likes vergeben?</div>
+      <div class="row">${sorted.map(([u,c]) => `<span class="badge ${u===currentUser?'me':''}">${esc(u)}: ${c}</span>`).join('')}</div>
+    </div>
+  `;
 }
 function renderHome() {
   const c = document.getElementById('tab-content');
@@ -237,6 +303,7 @@ function renderHome() {
       </label>
       <button class="btn-primary" onclick="addPost()">Posten</button>
     </div>
+    ${renderLikeLeaderboard()}
     <div class="row" style="justify-content:space-between;">
       <div class="section-title">News & Threads</div>
       <button class="btn-sm" onclick="refreshTab('home')">🔄 Aktualisieren</button>
@@ -247,12 +314,17 @@ function renderHome() {
   `;
 }
 function postCard(p) {
+  const likers = cache.likes[p.id] || [];
+  const iLiked = likers.includes(currentUser);
   return `
     <div class="card ${p.is_thread?'thread':''}">
       <h3>${esc(p.title)} ${p.is_thread?'<span class="badge">News</span>':''}</h3>
-      <div class="meta">${esc(p.author)} · ${fmtTime(p.created_at)} · 👍 ${p.upvotes||0}</div>
+      <div class="meta">${avatarHTML(p.author,20)} ${esc(p.author)} · ${fmtTime(p.created_at)}</div>
       <p class="body">${esc(p.content)}</p>
-      <div style="margin-top:8px;"><button class="btn-sm" onclick="upvotePost('${p.id}')">👍 Hochstufen</button></div>
+      <div style="margin-top:10px;">
+        <button class="btn-sm" onclick="toggleLike('${p.id}')">${iLiked ? '💜' : '🤍'} ${likers.length}</button>
+        ${likers.length ? `<div style="font-size:12px;color:#94a3b8;margin-top:6px;">geliked von ${likers.map(esc).join(', ')}</div>` : ''}
+      </div>
     </div>
   `;
 }
@@ -264,10 +336,13 @@ async function addPost() {
   await sb.from('posts').insert({ title, content, is_thread, author: currentUser });
   await loadFeed(); renderHome();
 }
-async function upvotePost(id) {
-  const p = cache.feed.find(x => x.id === id);
-  if (!p) return;
-  await sb.from('posts').update({ upvotes: (p.upvotes||0) + 1 }).eq('id', id);
+async function toggleLike(postId) {
+  const likers = cache.likes[postId] || [];
+  if (likers.includes(currentUser)) {
+    await sb.from('post_likes').delete().eq('post_id', postId).eq('username', currentUser);
+  } else {
+    await sb.from('post_likes').insert({ post_id: postId, username: currentUser });
+  }
   await loadFeed(); renderHome();
 }
 
@@ -296,7 +371,7 @@ function renderMaterials() {
     ${cache.materials.length ? cache.materials.map(m => `
       <div class="card">
         <h3>${esc(m.title)} <span class="badge">${esc(m.subject||'Allgemein')}</span></h3>
-        <div class="meta">${esc(m.author)} · ${fmtTime(m.created_at)}</div>
+        <div class="meta">${avatarHTML(m.author,20)} ${esc(m.author)} · ${fmtTime(m.created_at)}</div>
         ${m.link ? `<p class="body">🔗 <a href="${esc(m.link)}" target="_blank" style="color:#a78bfa;">${esc(m.link)}</a></p>` : ''}
         ${m.file_url ? `<p class="body">📎 <a href="${esc(m.file_url)}" target="_blank" style="color:#a78bfa;">${esc(m.file_name||'Datei herunterladen')}</a></p>` : ''}
         ${m.note ? `<p class="body">${esc(m.note)}</p>` : ''}
@@ -354,7 +429,7 @@ function renderForum() {
           <div class="msg-list">
             ${msgs.length ? msgs.map(m => `
               <div class="msg">
-                <span class="who">${esc(m.author)}</span><span class="when">${fmtTime(m.created_at)}</span>
+                <div class="who-row">${avatarHTML(m.author,20)}<span class="who">${esc(m.author)}</span><span class="when">${fmtTime(m.created_at)}</span></div>
                 <div class="text">${esc(m.text)}</div>
               </div>
             `).join('') : '<div class="empty">Noch keine Nachrichten in diesem Raum.</div>'}
@@ -408,7 +483,7 @@ function renderEvents() {
     ${cache.events.length ? cache.events.map(ev => `
       <div class="card">
         <h3>${esc(ev.title)}</h3>
-        <div class="meta">📅 ${esc(ev.date)} ${ev.location ? '· 📍 '+esc(ev.location) : ''} · von ${esc(ev.author)}</div>
+        <div class="meta">${avatarHTML(ev.author,20)} 📅 ${esc(ev.date)} ${ev.location ? '· 📍 '+esc(ev.location) : ''} · von ${esc(ev.author)}</div>
         ${ev.description ? `<p class="body">${esc(ev.description)}</p>` : ''}
       </div>
     `).join('') : '<div class="empty">Noch keine Veranstaltungen.</div>'}
@@ -424,7 +499,7 @@ async function addEvent() {
   await loadEvents(); renderEvents();
 }
 
-// ---------- RAFFLES ----------
+// ---------- RAFFLES (Ticket-Verlosung mit Glücksrad) ----------
 async function loadRaffles() {
   const { data } = await sb.from('raffles').select('*, raffle_interest(*)').order('created_at', { ascending: false });
   cache.raffles = data || [];
@@ -447,23 +522,25 @@ function renderRaffles() {
 }
 function raffleCard(r) {
   const interested = r.raffle_interest || [];
-  const myEntry = interested.find(i => i.username === currentUser);
-  const totalWanted = interested.reduce((s,i)=>s+i.count,0);
+  const totalWanted = interested.reduce((s,i) => s + i.count, 0);
   return `
     <div class="card">
       <h3>🎟️ ${esc(r.title)}</h3>
-      <div class="meta">${r.ticket_count} Tickets · erstellt von ${esc(r.owner)} · ${fmtTime(r.created_at)}</div>
-      <div class="interest-list">${interested.length} Interessent(en), insgesamt ${totalWanted} gewünschte Tickets</div>
+      <div class="meta">${avatarHTML(r.owner,20)} ${r.ticket_count} Tickets · erstellt von ${esc(r.owner)} · ${fmtTime(r.created_at)}</div>
+      ${interested.length ? `
+        <div class="row">
+          ${interested.map(i => `<span class="badge ${i.username===currentUser?'me':''}">${esc(i.username)}: ${i.count}${i.username===currentUser && !r.drawn ? ` <span class="like-x" onclick="removeEntry('${i.id}')">✕</span>` : ''}</span>`).join('')}
+        </div>
+        <div class="interest-list">Insgesamt ${totalWanted} gewünschte Tickets aus ${interested.length} Anmeldungen — für alle einsehbar</div>
+      ` : '<div class="empty">Noch keine Anmeldungen.</div>'}
       ${r.drawn ? `
-        <p class="body"><strong>Ergebnis der Verlosung:</strong></p>
+        <p class="body" style="margin-top:8px;"><strong>Ergebnis der Verlosung:</strong></p>
         ${(r.winners||[]).length ? r.winners.map(w => `<div class="winner">🎉 ${esc(w.user)} → ${w.count} Ticket(s)</div>`).join('') : '<div class="empty">Niemand hat Tickets erhalten.</div>'}
       ` : `
-        <div class="row">
-          ${!myEntry ? `
-            <input id="want-${r.id}" type="number" min="1" max="${r.ticket_count}" placeholder="Anzahl" style="width:90px;margin-bottom:0;" />
-            <button class="btn-sm" onclick="joinRaffle('${r.id}')">Interesse anmelden</button>
-          ` : `<span style="font-size:13px;color:#a78bfa;">Du willst ${myEntry.count} Ticket(s) — angemeldet ✓</span>`}
-          ${interested.length ? `<button class="btn-accent" onclick="drawRaffle('${r.id}')">🎲 Jetzt auslosen</button>` : ''}
+        <div class="row" style="margin-top:10px;">
+          <input id="want-${r.id}" type="number" min="1" max="2" placeholder="1-2" style="width:70px;margin-bottom:0;" />
+          <button class="btn-sm" onclick="joinRaffle('${r.id}')">+ Anmelden (max. 2)</button>
+          ${interested.length ? `<button class="btn-accent" onclick="startDraw('${r.id}')">🎲 Jetzt auslosen</button>` : ''}
         </div>
       `}
     </div>
@@ -480,25 +557,94 @@ async function joinRaffle(id) {
   const input = document.getElementById('want-' + id);
   const count = parseInt(input.value);
   if (!count || count < 1) return;
-  await sb.from('raffle_interest').upsert(
-    { raffle_id: id, username: currentUser, count },
-    { onConflict: 'raffle_id,username' }
-  );
+  if (count > 2) { alert('Maximal 2 Tickets pro Anmeldung. Für mehr einfach mehrmals anmelden.'); return; }
+  await sb.from('raffle_interest').insert({ raffle_id: id, username: currentUser, count });
   await loadRaffles(); renderRaffles();
 }
-async function drawRaffle(id) {
-  const r = cache.raffles.find(x => x.id === id);
-  if (!r || r.drawn) return;
-  const interested = r.raffle_interest || [];
-  const shuffled = interested.slice().sort(() => Math.random() - 0.5);
-  let remaining = r.ticket_count;
-  const winners = [];
-  for (const entry of shuffled) {
-    if (remaining <= 0) break;
-    const given = Math.min(entry.count, remaining);
-    if (given > 0) { winners.push({ user: entry.username, count: given }); remaining -= given; }
+async function removeEntry(entryId) {
+  await sb.from('raffle_interest').delete().eq('id', entryId).eq('username', currentUser);
+  await loadRaffles(); renderRaffles();
+}
+
+function computeRaffleRounds(ticketCount, entries) {
+  let pool = entries.map(e => ({ id: e.id, username: e.username, count: e.count }));
+  let remaining = ticketCount;
+  const rounds = [];
+  while (remaining > 0 && pool.length > 0) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const winner = pool[idx];
+    const given = Math.min(winner.count, remaining);
+    rounds.push({ poolSnapshot: pool.slice(), winner, given });
+    remaining -= given;
+    pool = pool.filter((_, i) => i !== idx);
   }
-  await sb.from('raffles').update({ drawn: true, winners }).eq('id', id);
+  return rounds;
+}
+function startDraw(raffleId) {
+  const r = cache.raffles.find(x => x.id === raffleId);
+  if (!r || r.drawn) return;
+  const entries = r.raffle_interest || [];
+  if (!entries.length) return;
+  const rounds = computeRaffleRounds(r.ticket_count, entries);
+  drawState = { raffleId, rounds, currentRound: 0, collectedWinners: [] };
+  const overlay = document.createElement('div');
+  overlay.id = 'draw-overlay';
+  overlay.innerHTML = `
+    <div id="wheel-wrap">
+      <div id="wheel"></div>
+      <div id="wheel-pointer"></div>
+    </div>
+    <div id="wheel-legend"></div>
+    <div id="draw-result"></div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(spinNextRound, 400);
+}
+function buildWheel(pool) {
+  const seg = 360 / pool.length;
+  const gradient = pool.map((e,i) => `${PALETTE_COLORS[i % PALETTE_COLORS.length]} ${i*seg}deg ${(i+1)*seg}deg`).join(', ');
+  const wheel = document.getElementById('wheel');
+  wheel.style.transition = 'none';
+  wheel.style.transform = 'rotate(0deg)';
+  wheel.style.background = `conic-gradient(${gradient})`;
+  document.getElementById('wheel-legend').innerHTML = pool.map((e,i) => `
+    <span style="font-size:12px;color:#e2e8f0;display:flex;align-items:center;gap:4px;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${PALETTE_COLORS[i % PALETTE_COLORS.length]};"></span>
+      ${esc(e.username)} (${e.count})
+    </span>
+  `).join('');
+}
+async function spinNextRound() {
+  const ds = drawState;
+  const round = ds.rounds[ds.currentRound];
+  buildWheel(round.poolSnapshot);
+  document.getElementById('draw-result').textContent = '';
+  await new Promise(res => setTimeout(res, 60));
+  const seg = 360 / round.poolSnapshot.length;
+  const winnerIndex = round.poolSnapshot.findIndex(e => e.id === round.winner.id);
+  const targetAngle = 360 * 6 - (winnerIndex + 0.5) * seg;
+  const wheel = document.getElementById('wheel');
+  wheel.style.transition = 'transform 3s cubic-bezier(0.12,0.67,0.1,0.99)';
+  wheel.style.transform = `rotate(${targetAngle}deg)`;
+  await new Promise(res => setTimeout(res, 3200));
+  document.getElementById('draw-result').textContent = `🎉 ${round.winner.username} gewinnt ${round.given} Ticket(s)!`;
+  ds.collectedWinners.push({ user: round.winner.username, count: round.given });
+  ds.currentRound++;
+  await new Promise(res => setTimeout(res, 1800));
+  if (ds.currentRound < ds.rounds.length) {
+    spinNextRound();
+  } else {
+    finishDraw();
+  }
+}
+async function finishDraw() {
+  const ds = drawState;
+  const resEl = document.getElementById('draw-result');
+  resEl.innerHTML += '<br><span style="font-size:14px;color:#94a3b8;">Verlosung abgeschlossen ✓</span>';
+  await sb.from('raffles').update({ drawn: true, winners: ds.collectedWinners }).eq('id', ds.raffleId);
+  await new Promise(res => setTimeout(res, 1600));
+  document.getElementById('draw-overlay').remove();
+  drawState = null;
   await loadRaffles(); renderRaffles();
 }
 
