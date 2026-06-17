@@ -285,7 +285,9 @@ function renderMaterials() {
       <input id="mat-subject" placeholder="Fach / Kurs" />
       <input id="mat-link" placeholder="Link (Drive/Dropbox) — optional" />
       <textarea id="mat-note" placeholder="Notiz / Beschreibung — optional"></textarea>
-      <button class="btn-primary" onclick="addMaterial()">Hinzufügen</button>
+      <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Datei hochladen (PDF etc., max. 50MB) — optional</label>
+      <input id="mat-file" type="file" style="margin-bottom:12px;" />
+      <button class="btn-primary" id="mat-submit-btn" onclick="addMaterial()">Hinzufügen</button>
     </div>
     <div class="row" style="justify-content:space-between;">
       <div class="section-title">Geteilte Unterlagen</div>
@@ -296,6 +298,7 @@ function renderMaterials() {
         <h3>${esc(m.title)} <span class="badge">${esc(m.subject||'Allgemein')}</span></h3>
         <div class="meta">${esc(m.author)} · ${fmtTime(m.created_at)}</div>
         ${m.link ? `<p class="body">🔗 <a href="${esc(m.link)}" target="_blank" style="color:#a78bfa;">${esc(m.link)}</a></p>` : ''}
+        ${m.file_url ? `<p class="body">📎 <a href="${esc(m.file_url)}" target="_blank" style="color:#a78bfa;">${esc(m.file_name||'Datei herunterladen')}</a></p>` : ''}
         ${m.note ? `<p class="body">${esc(m.note)}</p>` : ''}
       </div>
     `).join('') : '<div class="empty">Noch keine Unterlagen geteilt.</div>'}
@@ -306,8 +309,19 @@ async function addMaterial() {
   const subject = document.getElementById('mat-subject').value.trim();
   const link = document.getElementById('mat-link').value.trim();
   const note = document.getElementById('mat-note').value.trim();
+  const file = document.getElementById('mat-file').files[0];
   if (!title) return;
-  await sb.from('materials').insert({ title, subject, link, note, author: currentUser });
+  const btn = document.getElementById('mat-submit-btn');
+  btn.disabled = true; btn.textContent = file ? 'Lädt hoch...' : 'Lädt...';
+  let file_url = null, file_name = null;
+  if (file) {
+    const path = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const { error: upErr } = await sb.storage.from('materials').upload(path, file);
+    if (upErr) { alert('Datei-Upload fehlgeschlagen: ' + upErr.message); btn.disabled = false; btn.textContent = 'Hinzufügen'; return; }
+    const { data } = sb.storage.from('materials').getPublicUrl(path);
+    file_url = data.publicUrl; file_name = file.name;
+  }
+  await sb.from('materials').insert({ title, subject, link, note, file_url, file_name, author: currentUser });
   await loadMaterials(); renderMaterials();
 }
 
